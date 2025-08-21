@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VXM PREDICTOR PRO</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  body{
+    margin:0;
+    font-family: Inter, sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    height:100vh;
+    overflow:hidden;
+    background:#150000;
+    color:#fff;
+  }
+  .frame{
+    width:380px;
+    background:#1a0c0c;
+    border-radius:20px;
+    padding:24px;
+    border:2px solid #ff1a1a;
+    box-shadow:0 0 20px rgba(255,0,0,0.6);
+    z-index:1;
+  }
+  .hidden{display:none}
+  .brand{
+    font-family: Orbitron, sans-serif;
+    font-size:28px;
+    font-weight:800;
+    text-align:center;
+    color:#ff3333;
+  }
+  .headline{text-align:center;margin:12px 0;font-weight:700;color:#ff6666}
+  .textbox{
+    width:100%;padding:12px;border-radius:10px;
+    background:#2e0d0d;border:none;color:#fff;
+  }
+  .btn{
+    width:100%;padding:14px;margin:16px 0;
+    border:none;border-radius:10px;
+    background:#ff1a1a;color:#fff;font-weight:700;
+    cursor:pointer;
+  }
+  .logout{
+    width:100%;padding:14px;
+    border:none;border-radius:10px;
+    background:#990000;color:#fff;font-weight:700;
+    cursor:pointer;
+  }
+  .result{text-align:center;margin:12px 0;}
+  .number{font-size:28px;font-weight:900;}
+  .big{color:#00ff6a;text-shadow:0 0 10px #00ff6a;}
+  .small{color:#ff4b4b;text-shadow:0 0 10px #ff4b4b;}
+  #bgCanvas{position:fixed; inset:0; z-index:-1;}
+  .fab{
+    position:fixed;
+    bottom:25px; right:25px;
+    width:70px; height:70px;
+    border-radius:50%;
+    background:linear-gradient(135deg,#ff1a1a,#cc0000);
+    color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:34px;
+    cursor:pointer;
+    box-shadow:0 4px 15px rgba(0,0,0,0.4);
+    transition:transform 0.2s, box-shadow 0.2s;
+    z-index:10;
+  }
+  .fab:hover{transform:scale(1.12); box-shadow:0 6px 20px rgba(0,0,0,0.6);}
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+
+<!-- LOGIN PAGE -->
+<div class="frame" id="loginPage">
+  <div class="brand">VXM PREDICTOR PRO</div>
+  <div class="headline">LOGIN</div>
+  <input type="text" id="keyInput" placeholder="Enter Access Key" class="textbox" />
+  <button class="btn" id="loginBtn">Login</button>
+</div>
+
+<!-- HOME PAGE -->
+<div class="frame hidden" id="homePage">
+  <div class="brand">VXM PREDICTOR PRO</div>
+  <div class="headline">WINGO SERVER HACKED</div>
+
+  <div class="result"><b>PERIOD:</b> <span id="periodOut">-</span></div>
+  <div class="result"><b>TIMER:</b> <span id="timerOut">00:00</span></div>
+
+  <button class="btn" id="getBtn">Get Prediction</button>
+
+  <div class="result"><b>NUMBER:</b> <span class="number" id="numOut">-</span></div>
+  <div class="result"><b>RESULT:</b> <span id="resOut">-</span></div>
+
+  <button class="logout" id="logoutBtn">Logout</button>
+</div>
+
+<div class="fab" id="fabBtn">✈️</div>
+
+<script>
+  // ==== LOGIN WITH ADMIN KEYS ====
+  const loginPage = document.getElementById("loginPage");
+  const homePage = document.getElementById("homePage");
+  const keyInput = document.getElementById("keyInput");
+
+  document.getElementById("loginBtn").addEventListener("click",()=>{
+    const enteredKey = keyInput.value.trim();
+
+    // Fetch all keys from localStorage (created in Admin Panel)
+    let keys = JSON.parse(localStorage.getItem("vxmKeys") || "[]");
+
+    const now = Date.now();
+    const found = keys.find(k => k.key === enteredKey && now < k.expiry);
+
+    if(found){
+      localStorage.setItem("activeKey", enteredKey);
+      loginPage.classList.add("hidden");
+      homePage.classList.remove("hidden");
+    } else {
+      alert("❌ Invalid or Expired Key!");
+    }
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click",()=>{
+    homePage.classList.add("hidden");
+    loginPage.classList.remove("hidden");
+    keyInput.value="";
+    localStorage.removeItem("activeKey");
+  });
+
+  // Auto-login if already have active key
+  window.addEventListener("load", ()=>{
+    const activeKey = localStorage.getItem("activeKey");
+    if(activeKey){
+      let keys = JSON.parse(localStorage.getItem("vxmKeys") || "[]");
+      const now = Date.now();
+      if(keys.find(k => k.key===activeKey && now < k.expiry)){
+        loginPage.classList.add("hidden");
+        homePage.classList.remove("hidden");
+      }
+    }
+  });
+
+  // ==== PERIOD + TIMER ====
+  const outPeriod = document.getElementById("periodOut");
+  const outTimer  = document.getElementById("timerOut");
+  let lastPeriod = "", lastPrediction = null;
+
+  function updatePeriodTimer(){
+    const now = new Date();
+    const seconds = now.getUTCSeconds();
+    const remainingSeconds = 60 - seconds;
+    const minutes = now.getUTCMinutes();
+    const totalMinutes = now.getUTCHours() * 60 + minutes;
+
+    const YYYY = now.getUTCFullYear();
+    const MM = String(now.getUTCMonth() + 1).padStart(2, "0");
+    const DD = String(now.getUTCDate()).padStart(2, "0");
+
+    const periodNum = `${YYYY}${MM}${DD}` + "1000" + String(10001 + totalMinutes);
+    outPeriod.textContent = periodNum;
+
+    const raw = `   ${String(0).padStart(2,"0")}  :  ${String(remainingSeconds).padStart(2,"0")}`;
+    const spaced = raw.replace(/(\d)(?=\d)/g, "$1 ");
+    outTimer.textContent = spaced;
+
+    return periodNum;
+  }
+  setInterval(updatePeriodTimer, 1000);
+
+  // ==== ONE PREDICTION PER PERIOD ====
+  document.getElementById("getBtn").addEventListener("click", ()=>{
+    const period = updatePeriodTimer();
+    let num;
+    if (period !== lastPeriod) {
+      num = Math.floor(Math.random() * 10);
+      lastPrediction = num;
+      lastPeriod = period;
+    } else {
+      num = lastPrediction;
+    }
+    document.getElementById("numOut").textContent = num;
+    const resEl = document.getElementById("resOut");
+    if (num >= 5) { resEl.textContent = "BIG";   resEl.className = "big"; }
+    else          { resEl.textContent = "SMALL"; resEl.className = "small"; }
+  });
+
+  // ==== PARTICLE BG ====
+  const canvas = document.getElementById("bgCanvas");
+  const ctx = canvas.getContext("2d");
+  function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; }
+  window.addEventListener("resize", resize); resize();
+  const parts = [];
+  for(let i=0;i<60;i++){
+    parts.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,r:Math.random()*3+2,dx:(Math.random()-0.5)*1.2,dy:(Math.random()-0.5)*1.2,h:0});
+  }
+  (function anim(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    parts.forEach(p=>{
+      p.x+=p.dx; p.y+=p.dy;
+      if(p.x<0||p.x>canvas.width) p.dx*=-1;
+      if(p.y<0||p.y>canvas.height) p.dy*=-1;
+      p.h+=1;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle=`hsl(${p.h},100%,50%)`; ctx.fill();
+    });
+    requestAnimationFrame(anim);
+  })();
+
+  // ==== FAB ====
+  document.getElementById("fabBtn").addEventListener("click", ()=>{
+    window.open("https://t.me/+80gY--B_r545ZDY9","_blank");
+  });
+</script>
+</body>
+</html>
